@@ -33,6 +33,16 @@ The tile system is in `src/tileGrid.ts` — use `latLonToTile()`, `tileBounds()`
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview production build locally |
 
+## Deploy on GitHub Pages (all on GitHub)
+
+1. Push this repo to GitHub (if you haven’t already).
+2. In your repo: **Settings → Pages**.
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+4. Push to `main` (or run the workflow manually). The **Actions** tab will build and deploy.
+5. Your site will be at **`https://YOUR_USERNAME.github.io/YOUR_REPO/`**.
+
+No Vercel or other host needed.
+
 ## Tech Stack
 
 - **TypeScript** – Type-safe development

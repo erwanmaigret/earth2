@@ -5,8 +5,11 @@ const cesiumSource = "node_modules/cesium/Build/Cesium";
 const cesiumBaseUrl = "cesiumStatic";
 
 export default defineConfig({
+  base: process.env.BASE_PATH || "/",
   define: {
-    CESIUM_BASE_URL: JSON.stringify(`/${cesiumBaseUrl}`),
+    CESIUM_BASE_URL: JSON.stringify(
+      process.env.BASE_PATH ? `${process.env.BASE_PATH}${cesiumBaseUrl}` : `/${cesiumBaseUrl}`
+    ),
   },
   plugins: [
     viteStaticCopy({
