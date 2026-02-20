@@ -1,0 +1,14 @@
+html,
+body,
+#cesiumContainer {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Hide Cesium credit/attribution bar at the bottom */
+.cesium-widget-credits {
+  display: none !important;
+}
