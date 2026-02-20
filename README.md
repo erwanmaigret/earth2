@@ -33,15 +33,12 @@ The tile system is in `src/tileGrid.ts` — use `latLonToTile()`, `tileBounds()`
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview production build locally |
 
-## Deploy on GitHub Pages (all on GitHub)
+## Deploy on GitHub Pages
 
-1. Push this repo to GitHub (if you haven’t already).
-2. In your repo: **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-4. Push to `main` (or run the workflow manually). The **Actions** tab will build and deploy.
-5. Your site will be at **`https://YOUR_USERNAME.github.io/YOUR_REPO/`**.
-
-No Vercel or other host needed.
+1. In the repo: **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+3. Push to `main`; the workflow builds and deploys automatically.
+4. Site URL: **`https://erwanmaigret.github.io/earth2/`**
 
 ## Tech Stack
 
