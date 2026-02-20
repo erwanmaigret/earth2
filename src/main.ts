@@ -1,4 +1,5 @@
 import {
+  Camera,
   Cartesian2,
   Cartesian3,
   Color,
@@ -11,6 +12,10 @@ import {
   Terrain,
   Viewer,
 } from "cesium";
+
+// Match our initial "far view" so no built-in default-view animation overrides the geolocation flyTo
+Camera.DEFAULT_VIEW_RECTANGLE = Rectangle.fromDegrees(-180, -90, 180, 90);
+Camera.DEFAULT_VIEW_FACTOR = 0.5;
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 import {
@@ -86,29 +91,17 @@ function addTileEntity(
   });
 }
 
-// Click: split tile in 4, hole on clicked quadrant; or remove sub-tile
-const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-handler.setInputAction((click: { position: { x: number; y: number } }) => {
-  const position = Cartesian2.fromElements(click.position.x, click.position.y);
-  const ray = viewer.camera.getPickRay(position);
-  if (!ray) return;
-  const globePosition = viewer.scene.globe.pick(ray, viewer.scene);
-  if (!globePosition) return;
-
-  const cartographic = Ellipsoid.WGS84.cartesianToCartographic(globePosition);
-  const lat = (cartographic.latitude * 180) / Math.PI;
-  const lon = (cartographic.longitude * 180) / Math.PI;
+/** Remove or split the tile at (lat, lon) — same as a click on that point. */
+function removeOrSplitTileAt(lat: number, lon: number) {
   const tile = latLonToTile(lat, lon, gridConfig);
   const baseId = tileIdToString(tile);
   const baseBoundsFull = tileBounds(tile.row, tile.col, gridConfig, 0);
 
   const baseEntity = viewer.entities.getById(baseId);
   if (baseEntity?.show) {
-    // Unsplit tile: split from full cell (no margin), then apply gapForDepth to each child
     viewer.entities.remove(baseEntity);
     let bounds = { ...baseBoundsFull };
     const path: number[] = [];
-
     for (let level = 0; level < SPLIT_DEPTH; level++) {
       const holeQ = quadrantAt(lat, lon, bounds);
       for (let q = 0; q < 4; q++) {
@@ -124,7 +117,6 @@ handler.setInputAction((click: { position: { x: number; y: number } }) => {
     return;
   }
 
-  // Already split: find leaf entity containing (lat, lon), then split it with remaining depth
   let bounds = { ...baseBoundsFull };
   const path: number[] = [];
   for (let level = 0; level < SPLIT_DEPTH; level++) {
@@ -135,10 +127,8 @@ handler.setInputAction((click: { position: { x: number; y: number } }) => {
     if (entity?.show) {
       const currentDepth = path.length;
       const remainingDepth = SPLIT_DEPTH - currentDepth;
-      // bounds is still the parent quadrant; narrow to this tile's quadrant
       let tileBounds = quadrantBounds(bounds, q as 0 | 1 | 2 | 3);
       const prefix = `${id}_`;
-      // Remove this tile and all its descendants so new split doesn't overlap
       viewer.entities.remove(entity);
       const toRemove: (typeof entity)[] = [];
       viewer.entities.values.forEach((e) => {
@@ -147,7 +137,6 @@ handler.setInputAction((click: { position: { x: number; y: number } }) => {
         }
       });
       toRemove.forEach((e) => viewer.entities.remove(e));
-      // Split only this tile's quadrant (remainingDepth) more times
       bounds = tileBounds;
       for (let d = 0; d < remainingDepth; d++) {
         const holeQ = quadrantAt(lat, lon, bounds);
@@ -166,6 +155,20 @@ handler.setInputAction((click: { position: { x: number; y: number } }) => {
     }
     bounds = quadrantBounds(bounds, q as 0 | 1 | 2 | 3);
   }
+}
+
+// Click: split tile in 4, hole on clicked quadrant; or remove sub-tile
+const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction((click: { position: { x: number; y: number } }) => {
+  const position = Cartesian2.fromElements(click.position.x, click.position.y);
+  const ray = viewer.camera.getPickRay(position);
+  if (!ray) return;
+  const globePosition = viewer.scene.globe.pick(ray, viewer.scene);
+  if (!globePosition) return;
+  const cartographic = Ellipsoid.WGS84.cartesianToCartographic(globePosition);
+  const lat = (cartographic.latitude * 180) / Math.PI;
+  const lon = (cartographic.longitude * 180) / Math.PI;
+  removeOrSplitTileAt(lat, lon);
 }, ScreenSpaceEventType.LEFT_CLICK);
 
 // Fly to user's location on startup (slow), or default view if unavailable
@@ -173,49 +176,117 @@ const FLY_DURATION = 5; // seconds
 const DEFAULT_VIEW = {
   lon: -122.4,
   lat: 37.65,
-  height: 8_000_000,
+  height: 5_000_000,
 };
 
-// Start from a far view so the fly-to-location animation is visible
-viewer.camera.setView({
-  destination: Cartesian3.fromDegrees(0, 20, 25_000_000),
-  orientation: {
-    heading: 0,
-    pitch: CesiumMath.toRadians(-90),
-  },
-});
+const statusEl = document.getElementById("locationStatus");
 
-function flyToLocation(lon: number, lat: number, height: number = 8_000_000) {
-  viewer.camera.flyTo({
-    destination: Cartesian3.fromDegrees(lon, lat, height),
-    orientation: {
-      heading: 0,
-      pitch: CesiumMath.toRadians(-45),
-    },
-    duration: FLY_DURATION,
+function setLocationStatus(msg: string, fadeAfterMs?: number) {
+  if (!statusEl) return;
+  statusEl.textContent = msg;
+  statusEl.classList.remove("fade");
+  if (fadeAfterMs != null) {
+    setTimeout(() => statusEl.classList.add("fade"), fadeAfterMs);
+  }
+}
+
+// Camera already at far view (DEFAULT_VIEW_RECTANGLE above). No setView here so nothing overrides the upcoming flyTo.
+
+// Height above ellipsoid in meters. 500 m for a close view of the ground.
+const LOCATION_VIEW_HEIGHT = 500;
+
+function flyToLocation(
+  lon: number,
+  lat: number,
+  height: number = LOCATION_VIEW_HEIGHT,
+  removeTileAfterFly?: boolean
+) {
+  const destination = Cartesian3.fromDegrees(lon, lat, height);
+  const orientation = {
+    heading: 0,
+    pitch: CesiumMath.toRadians(-90), // straight down at the ground
+    roll: 0,
+  };
+
+  viewer.camera.cancelFlight();
+
+  // Defer so we're not in the same tick as geolocation callback (avoids being overridden)
+  requestAnimationFrame(() => {
+    viewer.camera.cancelFlight();
+    viewer.camera.flyTo({
+      destination,
+      orientation,
+      duration: FLY_DURATION,
+      complete: removeTileAfterFly
+        ? () => removeOrSplitTileAt(lat, lon)
+        : undefined,
+    });
+    viewer.scene.requestRender();
+    // If something cancelled the flight, jump to location after the flight would have finished
+    setTimeout(() => {
+      const current = viewer.camera.positionCartographic;
+      const currentLon = (current.longitude * 180) / Math.PI;
+      const currentLat = (current.latitude * 180) / Math.PI;
+      const dist = Math.hypot(currentLon - lon, currentLat - lat);
+      if (dist > 2) {
+        viewer.camera.cancelFlight();
+        viewer.camera.setView({ destination, orientation });
+        if (removeTileAfterFly) removeOrSplitTileAt(lat, lon);
+      }
+    }, (FLY_DURATION + 1) * 1000);
   });
 }
 
 function tryGeolocation() {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
+    setLocationStatus("Location not supported — using default view", 4000);
     flyToLocation(DEFAULT_VIEW.lon, DEFAULT_VIEW.lat, DEFAULT_VIEW.height);
     return;
   }
+  setLocationStatus("Flying to your location…");
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { longitude, latitude } = pos.coords;
-      flyToLocation(longitude, latitude);
+      setLocationStatus("Using your location", 4000);
+      flyToLocation(longitude, latitude, undefined, true);
     },
     () => {
+      setLocationStatus("Location unavailable — using default view", 5000);
       flyToLocation(DEFAULT_VIEW.lon, DEFAULT_VIEW.lat, DEFAULT_VIEW.height);
     },
     {
       enableHighAccuracy: true,
-      timeout: 15_000,
-      maximumAge: 60_000,
+      timeout: 20_000,
+      maximumAge: 0, // Prefer fresh position on start
     }
   );
 }
 
 // Slight delay so the viewer and tiles are ready, then request location and fly
 setTimeout(tryGeolocation, 500);
+
+// Button: fly to current location when detected
+const goToMyLocationBtn = document.getElementById("goToMyLocation") as HTMLButtonElement | null;
+if (goToMyLocationBtn) {
+  goToMyLocationBtn.addEventListener("click", () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationStatus("Location not supported", 4000);
+      return;
+    }
+    goToMyLocationBtn.disabled = true;
+    setLocationStatus("Getting location…");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { longitude, latitude } = pos.coords;
+        setLocationStatus("Flying to your location", 3000);
+        flyToLocation(longitude, latitude, undefined, true);
+        goToMyLocationBtn.disabled = false;
+      },
+      () => {
+        setLocationStatus("Location unavailable — allow access or try again", 5000);
+        goToMyLocationBtn.disabled = false;
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 }
+    );
+  });
+}
