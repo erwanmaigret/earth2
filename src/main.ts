@@ -17,7 +17,6 @@ Camera.DEFAULT_VIEW_FACTOR = 0.5;
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 import {
-  DEFAULT_GRID_CONFIG,
   insetBounds,
   latLonToTile,
   quadrantAt,
