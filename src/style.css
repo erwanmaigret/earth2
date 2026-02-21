@@ -13,6 +13,19 @@ body,
   display: none !important;
 }
 
+#tilesVisited {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100000;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font: 14px system-ui, sans-serif;
+  pointer-events: none;
+}
+
 #followLocation {
   position: fixed;
   left: 50%;

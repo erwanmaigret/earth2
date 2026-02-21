@@ -1,9 +1,7 @@
 import {
   Camera,
-  Cartesian2,
   Cartesian3,
   Color,
-  Ellipsoid,
   HeightReference,
   Math as CesiumMath,
   Rectangle,
@@ -93,6 +91,13 @@ function addTileEntity(
   });
 }
 
+let tilesVisitedCount = 0;
+
+function updateTilesVisitedDisplay() {
+  const el = document.getElementById("tilesVisited");
+  if (el) el.textContent = `Tiles visited: ${tilesVisitedCount}`;
+}
+
 /** Remove or split the tile at (lat, lon) — same as a click on that point. */
 function removeOrSplitTileAt(lat: number, lon: number) {
   const tile = latLonToTile(lat, lon, gridConfig);
@@ -101,6 +106,8 @@ function removeOrSplitTileAt(lat: number, lon: number) {
 
   const baseEntity = viewer.entities.getById(baseId);
   if (baseEntity?.show) {
+    tilesVisitedCount++;
+    updateTilesVisitedDisplay();
     viewer.entities.remove(baseEntity);
     let bounds = { ...baseBoundsFull };
     const path: number[] = [];
@@ -127,6 +134,8 @@ function removeOrSplitTileAt(lat: number, lon: number) {
     const id = `${baseId}_${path.join("_")}`;
     const entity = viewer.entities.getById(id);
     if (entity?.show) {
+      tilesVisitedCount++;
+      updateTilesVisitedDisplay();
       const currentDepth = path.length;
       const remainingDepth = SPLIT_DEPTH - currentDepth;
       let tileBounds = quadrantBounds(bounds, q as 0 | 1 | 2 | 3);
@@ -159,20 +168,8 @@ function removeOrSplitTileAt(lat: number, lon: number) {
   }
 }
 
-// Click: split tile in 4, hole on clicked quadrant; or remove sub-tile
+// Tiles are only removed under the view center while following location (no click-to-remove)
 const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-handler.setInputAction((click: { position: { x: number; y: number } }) => {
-  const position = Cartesian2.fromElements(click.position.x, click.position.y);
-  const ray = viewer.camera.getPickRay(position);
-  if (!ray) return;
-  const globePosition = viewer.scene.globe.pick(ray, viewer.scene);
-  if (!globePosition) return;
-  const cartographic = Ellipsoid.WGS84.cartesianToCartographic(globePosition);
-  const lat = (cartographic.latitude * 180) / Math.PI;
-  const lon = (cartographic.longitude * 180) / Math.PI;
-  removeOrSplitTileAt(lat, lon);
-}, ScreenSpaceEventType.LEFT_CLICK);
-
 let leftMouseDown = false;
 handler.setInputAction(() => {
   leftMouseDown = true;
