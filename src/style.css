@@ -13,25 +13,7 @@ body,
   display: none !important;
 }
 
-#locationStatus {
-  position: fixed;
-  bottom: 12px;
-  left: 12px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  font: 14px/1.4 system-ui, sans-serif;
-  z-index: 100000;
-  max-width: 280px;
-  transition: opacity 0.5s ease;
-}
-#locationStatus.fade {
-  opacity: 0;
-  pointer-events: none;
-}
-
-#goToMyLocation {
+#followLocation {
   position: fixed;
   left: 50%;
   top: 12px;
@@ -47,10 +29,10 @@ body,
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
 }
-#goToMyLocation:hover {
+#followLocation:hover {
   background: rgba(0, 0, 0, 0.9);
 }
-#goToMyLocation:disabled {
+#followLocation:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

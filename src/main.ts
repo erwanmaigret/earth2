@@ -171,122 +171,120 @@ handler.setInputAction((click: { position: { x: number; y: number } }) => {
   removeOrSplitTileAt(lat, lon);
 }, ScreenSpaceEventType.LEFT_CLICK);
 
-// Fly to user's location on startup (slow), or default view if unavailable
-const FLY_DURATION = 5; // seconds
-const DEFAULT_VIEW = {
-  lon: -122.4,
-  lat: 37.65,
-  height: 5_000_000,
+let leftMouseDown = false;
+handler.setInputAction(() => {
+  leftMouseDown = true;
+}, ScreenSpaceEventType.LEFT_DOWN);
+handler.setInputAction(() => {
+  leftMouseDown = false;
+}, ScreenSpaceEventType.LEFT_UP);
+handler.setInputAction(() => {
+  if (leftMouseDown && followLocation) stopFollowing();
+  leftMouseDown = false;
+}, ScreenSpaceEventType.MOUSE_MOVE);
+
+// Height above ellipsoid in meters when following. 500 m for a close view of the ground.
+const LOCATION_VIEW_HEIGHT = 500;
+const FOLLOW_FLY_DURATION = 2.5; // seconds to animate to location when starting follow
+const orientation = {
+  heading: 0,
+  pitch: CesiumMath.toRadians(-90),
+  roll: 0,
 };
 
-const statusEl = document.getElementById("locationStatus");
+// --- Follow location: watch position, move camera, remove tile under center ---
+let followLocation = false;
+let followWatchId: number | null = null;
+let followTargetLon: number | null = null;
+let followTargetLat: number | null = null;
+const FOLLOW_LERP = 0.12; // per frame toward target
+const FOLLOW_REMOVE_THROTTLE_MS = 180; // remove tile under center at most this often
+let lastFollowRemoveTime = 0;
 
-function setLocationStatus(msg: string, fadeAfterMs?: number) {
-  if (!statusEl) return;
-  statusEl.textContent = msg;
-  statusEl.classList.remove("fade");
-  if (fadeAfterMs != null) {
-    setTimeout(() => statusEl.classList.add("fade"), fadeAfterMs);
-  }
-}
-
-// Camera already at far view (DEFAULT_VIEW_RECTANGLE above). No setView here so nothing overrides the upcoming flyTo.
-
-// Height above ellipsoid in meters. 500 m for a close view of the ground.
-const LOCATION_VIEW_HEIGHT = 500;
-
-function flyToLocation(
-  lon: number,
-  lat: number,
-  height: number = LOCATION_VIEW_HEIGHT,
-  removeTileAfterFly?: boolean
-) {
-  const destination = Cartesian3.fromDegrees(lon, lat, height);
-  const orientation = {
-    heading: 0,
-    pitch: CesiumMath.toRadians(-90), // straight down at the ground
-    roll: 0,
-  };
-
-  viewer.camera.cancelFlight();
-
-  // Defer so we're not in the same tick as geolocation callback (avoids being overridden)
-  requestAnimationFrame(() => {
-    viewer.camera.cancelFlight();
-    viewer.camera.flyTo({
-      destination,
-      orientation,
-      duration: FLY_DURATION,
-      complete: removeTileAfterFly
-        ? () => removeOrSplitTileAt(lat, lon)
-        : undefined,
-    });
-    viewer.scene.requestRender();
-    // If something cancelled the flight, jump to location after the flight would have finished
-    setTimeout(() => {
-      const current = viewer.camera.positionCartographic;
-      const currentLon = (current.longitude * 180) / Math.PI;
-      const currentLat = (current.latitude * 180) / Math.PI;
-      const dist = Math.hypot(currentLon - lon, currentLat - lat);
-      if (dist > 2) {
-        viewer.camera.cancelFlight();
-        viewer.camera.setView({ destination, orientation });
-        if (removeTileAfterFly) removeOrSplitTileAt(lat, lon);
-      }
-    }, (FLY_DURATION + 1) * 1000);
+function setCameraView(lon: number, lat: number, height: number = LOCATION_VIEW_HEIGHT) {
+  viewer.camera.setView({
+    destination: Cartesian3.fromDegrees(lon, lat, height),
+    orientation,
   });
 }
 
-function tryGeolocation() {
+function onFollowTick() {
+  if (!followLocation || followTargetLon == null || followTargetLat == null) return;
+  const carto = viewer.camera.positionCartographic;
+  const curLon = (carto.longitude * 180) / Math.PI;
+  const curLat = (carto.latitude * 180) / Math.PI;
+  const newLon = curLon + (followTargetLon - curLon) * FOLLOW_LERP;
+  const newLat = curLat + (followTargetLat - curLat) * FOLLOW_LERP;
+  setCameraView(newLon, newLat, LOCATION_VIEW_HEIGHT);
+  const now = performance.now();
+  if (now - lastFollowRemoveTime >= FOLLOW_REMOVE_THROTTLE_MS) {
+    lastFollowRemoveTime = now;
+    removeOrSplitTileAt(newLat, newLon);
+  }
+}
+
+function startFollowing() {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
-    setLocationStatus("Location not supported — using default view", 4000);
-    flyToLocation(DEFAULT_VIEW.lon, DEFAULT_VIEW.lat, DEFAULT_VIEW.height);
     return;
   }
-  setLocationStatus("Flying to your location…");
+  followLocation = true;
+  followTargetLon = null;
+  followTargetLat = null;
+
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { longitude, latitude } = pos.coords;
-      setLocationStatus("Using your location", 4000);
-      flyToLocation(longitude, latitude, undefined, true);
+      viewer.camera.cancelFlight();
+      viewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(longitude, latitude, LOCATION_VIEW_HEIGHT),
+        orientation,
+        duration: FOLLOW_FLY_DURATION,
+        complete: () => {
+          followTargetLon = longitude;
+          followTargetLat = latitude;
+          viewer.scene.preRender.addEventListener(onFollowTick);
+          followWatchId = navigator.geolocation.watchPosition(
+            (p) => {
+              followTargetLon = p.coords.longitude;
+              followTargetLat = p.coords.latitude;
+            },
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 2000 }
+          );
+          removeOrSplitTileAt(latitude, longitude);
+        },
+      });
     },
     () => {
-      setLocationStatus("Location unavailable — using default view", 5000);
-      flyToLocation(DEFAULT_VIEW.lon, DEFAULT_VIEW.lat, DEFAULT_VIEW.height);
+      stopFollowing();
     },
-    {
-      enableHighAccuracy: true,
-      timeout: 20_000,
-      maximumAge: 0, // Prefer fresh position on start
-    }
+    { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
   );
 }
 
-// Slight delay so the viewer and tiles are ready, then request location and fly
-setTimeout(tryGeolocation, 500);
+function stopFollowing() {
+  followLocation = false;
+  viewer.scene.preRender.removeEventListener(onFollowTick);
+  if (followWatchId != null) {
+    navigator.geolocation.clearWatch(followWatchId);
+    followWatchId = null;
+  }
+  followTargetLon = null;
+  followTargetLat = null;
+  const btn = document.getElementById("followLocation");
+  if (btn) btn.textContent = "Follow location";
+}
 
-// Button: fly to current location when detected
-const goToMyLocationBtn = document.getElementById("goToMyLocation") as HTMLButtonElement | null;
-if (goToMyLocationBtn) {
-  goToMyLocationBtn.addEventListener("click", () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationStatus("Location not supported", 4000);
-      return;
+// Button: toggle follow location (no initial jump on start)
+const followLocationBtn = document.getElementById("followLocation") as HTMLButtonElement | null;
+if (followLocationBtn) {
+  followLocationBtn.addEventListener("click", () => {
+    if (followLocation) {
+      stopFollowing();
+      followLocationBtn.textContent = "Follow location";
+    } else {
+      startFollowing();
+      followLocationBtn.textContent = "Stop follow";
     }
-    goToMyLocationBtn.disabled = true;
-    setLocationStatus("Getting location…");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { longitude, latitude } = pos.coords;
-        setLocationStatus("Flying to your location", 3000);
-        flyToLocation(longitude, latitude, undefined, true);
-        goToMyLocationBtn.disabled = false;
-      },
-      () => {
-        setLocationStatus("Location unavailable — allow access or try again", 5000);
-        goToMyLocationBtn.disabled = false;
-      },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 }
-    );
   });
 }
