@@ -199,6 +199,7 @@ const orientation = {
 
 // --- Follow location: watch position, move camera, remove tile under center ---
 let followLocation = false;
+let followFlyInProgress = false; // true while our "start follow" flyTo is running
 let followWatchId: number | null = null;
 let followTargetLon: number | null = null;
 let followTargetLat: number | null = null;
@@ -240,11 +241,13 @@ function startFollowing() {
     (pos) => {
       const { longitude, latitude } = pos.coords;
       viewer.camera.cancelFlight();
+      followFlyInProgress = true;
       viewer.camera.flyTo({
         destination: Cartesian3.fromDegrees(longitude, latitude, LOCATION_VIEW_HEIGHT),
         orientation,
         duration: FOLLOW_FLY_DURATION,
         complete: () => {
+          followFlyInProgress = false;
           followTargetLon = longitude;
           followTargetLat = latitude;
           viewer.scene.preRender.addEventListener(onFollowTick);
@@ -280,11 +283,16 @@ function stopFollowing() {
   if (btn) btn.textContent = "Follow location";
 }
 
-// When flying to a search result (or any viewer.flyTo), stop follow mode
-const originalFlyTo = viewer.flyTo.bind(viewer);
-viewer.flyTo = function (target: Parameters<typeof originalFlyTo>[0], options?: Parameters<typeof originalFlyTo>[1]) {
+// When flying to a search result (or any flyTo), stop follow mode
+const originalViewerFlyTo = viewer.flyTo.bind(viewer);
+viewer.flyTo = function (target: Parameters<typeof originalViewerFlyTo>[0], options?: Parameters<typeof originalViewerFlyTo>[1]) {
   if (followLocation) stopFollowing();
-  return originalFlyTo(target, options);
+  return originalViewerFlyTo(target, options);
+};
+const originalCameraFlyTo = viewer.camera.flyTo.bind(viewer.camera);
+viewer.camera.flyTo = function (options: Parameters<typeof originalCameraFlyTo>[0]) {
+  if (followLocation && !followFlyInProgress) stopFollowing();
+  return originalCameraFlyTo(options);
 };
 
 // Button: toggle follow location (no initial jump on start)
