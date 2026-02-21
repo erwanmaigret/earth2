@@ -38,9 +38,9 @@ const viewer = new Viewer("cesiumContainer", {
   selectionIndicator: false,
 });
 
-// Grid config: 36×72 = 2,592 tiles (~5° each). Bigger tiles, faster startup.
-const gridConfig: TileGridConfig = { ...DEFAULT_GRID_CONFIG };
-const TILE_GAP = 0.08; // 8% margin for top-level tiles (visible from far)
+// Grid config: 18×36 = 648 tiles (~10° each). Bigger initial tiles.
+const gridConfig: TileGridConfig = { latCount: 18, lonCount: 36 };
+const TILE_GAP = 0.03; // 3% margin for top-level tiles (smaller gaps between big tiles)
 
 const TILE_COLOR = new Color(0.2, 0.6, 1.0, 0.65);
 
@@ -70,7 +70,7 @@ for (let row = 0; row < gridConfig.latCount; row++) {
   }
 }
 
-const SPLIT_DEPTH = 10; // Split 6 times: smaller tiles near click, one small hole
+const SPLIT_DEPTH = 14; // More steps so the smallest tiles (and hole) are much smaller
 
 function addTileEntity(
   id: string,
