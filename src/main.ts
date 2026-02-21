@@ -13,7 +13,7 @@ import {
   Viewer,
 } from "cesium";
 
-// Match our initial "far view" so no built-in default-view animation overrides the geolocation flyTo
+// Initial view: whole globe (for Cesium's default); we override with a zoomed-in view below
 Camera.DEFAULT_VIEW_RECTANGLE = Rectangle.fromDegrees(-180, -90, 180, 90);
 Camera.DEFAULT_VIEW_FACTOR = 0.5;
 import "cesium/Build/Cesium/Widgets/widgets.css";
@@ -70,7 +70,18 @@ for (let row = 0; row < gridConfig.latCount; row++) {
   }
 }
 
-const SPLIT_DEPTH = 14; // More steps so the smallest tiles (and hole) are much smaller
+// Start zoomed in (e.g. ~4 Mm altitude) so you see a region, not the whole globe
+const INITIAL_ALTITUDE_M = 4_000_000;
+viewer.camera.setView({
+  destination: Cartesian3.fromDegrees(0, 20, INITIAL_ALTITUDE_M),
+  orientation: {
+    heading: 0,
+    pitch: CesiumMath.toRadians(-90),
+    roll: 0,
+  },
+});
+
+const SPLIT_DEPTH = 15; // More steps so the smallest tiles (and hole) are even smaller
 
 function addTileEntity(
   id: string,
@@ -182,9 +193,12 @@ handler.setInputAction(() => {
   if (leftMouseDown && followLocation) stopFollowing();
   leftMouseDown = false;
 }, ScreenSpaceEventType.MOUSE_MOVE);
+handler.setInputAction(() => {
+  if (followLocation) stopFollowing();
+}, ScreenSpaceEventType.WHEEL);
 
-// Height above ellipsoid in meters when following. 500 m for a close view of the ground.
-const LOCATION_VIEW_HEIGHT = 500;
+// Height above ellipsoid in meters when following. Lower = closer to the ground.
+const LOCATION_VIEW_HEIGHT = 300;
 const FOLLOW_FLY_DURATION = 2.5; // seconds to animate to location when starting follow
 const orientation = {
   heading: 0,
