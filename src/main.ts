@@ -34,6 +34,8 @@ const viewer = new Viewer("cesiumContainer", {
   timeline: false,
   infoBox: false,
   selectionIndicator: false,
+  navigationHelpButton: false,
+  sceneModePicker: false,
 });
 
 // Grid config: 18×36 = 648 tiles (~10° each). Bigger initial tiles.
