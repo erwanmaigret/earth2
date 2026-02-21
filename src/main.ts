@@ -70,16 +70,7 @@ for (let row = 0; row < gridConfig.latCount; row++) {
   }
 }
 
-// Start zoomed in (e.g. ~4 Mm altitude) so you see a region, not the whole globe
-const INITIAL_ALTITUDE_M = 4_000_000;
-viewer.camera.setView({
-  destination: Cartesian3.fromDegrees(0, 20, INITIAL_ALTITUDE_M),
-  orientation: {
-    heading: 0,
-    pitch: CesiumMath.toRadians(-90),
-    roll: 0,
-  },
-});
+// Start at whole-globe view (same as home button); no setView override.
 
 const SPLIT_DEPTH = 15; // More steps so the smallest tiles (and hole) are even smaller
 
@@ -288,6 +279,13 @@ function stopFollowing() {
   const btn = document.getElementById("followLocation");
   if (btn) btn.textContent = "Follow location";
 }
+
+// When flying to a search result (or any viewer.flyTo), stop follow mode
+const originalFlyTo = viewer.flyTo.bind(viewer);
+viewer.flyTo = function (target: Parameters<typeof originalFlyTo>[0], options?: Parameters<typeof originalFlyTo>[1]) {
+  if (followLocation) stopFollowing();
+  return originalFlyTo(target, options);
+};
 
 // Button: toggle follow location (no initial jump on start)
 const followLocationBtn = document.getElementById("followLocation") as HTMLButtonElement | null;
